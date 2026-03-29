@@ -80,17 +80,28 @@ export function useMembers(
 
     const rows = (data ?? []) as unknown as Membership[]
 
-    // Group by member and filter by effective coach
-    const memberMap = new Map<string, Membership[]>()
-
+    // Step 1: group ALL memberships by member_id
+    const allMemberships = new Map<string, Membership[]>()
     for (const row of rows) {
-      const effectiveCoach = row.handoff_coach_id ?? row.coach_id
-      if (!effectiveCoach || !selectedCoachIds.includes(effectiveCoach)) continue
       if (!row.member_id) continue
-
-      const existing = memberMap.get(row.member_id) ?? []
+      const existing = allMemberships.get(row.member_id) ?? []
       existing.push(row)
-      memberMap.set(row.member_id, existing)
+      allMemberships.set(row.member_id, existing)
+    }
+
+    // Step 2: include only members whose PRIMARY membership's effective coach
+    // matches a selected coach. Secondary memberships may have different coach_ids
+    // and do NOT affect who "owns" the member.
+    //   effective coach = handoff_coach_id if set, otherwise coach_id
+    const memberMap = new Map<string, Membership[]>()
+    for (const [memberId, memberships] of allMemberships) {
+      const primary = memberships.find((m) => m.primary_membership_id === null)
+      if (!primary) continue
+
+      const effectiveCoach = primary.handoff_coach_id ?? primary.coach_id
+      if (!effectiveCoach || !selectedCoachIds.includes(effectiveCoach)) continue
+
+      memberMap.set(memberId, memberships)
     }
 
     // Fetch member names
