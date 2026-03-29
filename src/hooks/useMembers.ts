@@ -64,7 +64,6 @@ export function useMembers(
           category
         )
       `)
-      .neq('journey_stage', 'no_sale')
 
     if (gymFilter) {
       query = query.eq('gym', gymFilter)
@@ -97,6 +96,7 @@ export function useMembers(
     for (const [memberId, memberships] of allMemberships) {
       const primary = memberships.find((m) => m.primary_membership_id === null)
       if (!primary) continue
+      if (primary.journey_stage === 'no_sale') continue
 
       const effectiveCoach = primary.handoff_coach_id ?? primary.coach_id
       if (!effectiveCoach || !selectedCoachIds.includes(effectiveCoach)) continue
