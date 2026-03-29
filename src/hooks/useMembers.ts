@@ -42,86 +42,97 @@ export function useMembers(
     setLoading(true)
 
     const today = new Date().toISOString().split('T')[0]
-
-    let query = supabase
-      .from('member_memberships')
-      .select(`
+    const selectCols = `
+      id,
+      member_id,
+      membership_type_id,
+      start_date,
+      end_date,
+      status,
+      coach_id,
+      handoff_coach_id,
+      primary_membership_id,
+      gym,
+      journey_stage,
+      membership_types (
         id,
-        member_id,
-        membership_type_id,
-        start_date,
-        end_date,
-        status,
-        coach_id,
-        handoff_coach_id,
-        primary_membership_id,
-        gym,
-        journey_stage,
-        membership_types (
-          id,
-          name,
-          session_frequency_per_week,
-          category
-        )
-      `)
+        name,
+        session_frequency_per_week,
+        category
+      )
+    `
+
+    // Step 1: Fetch only PRIMARY memberships where coach_id or handoff_coach_id
+    // is a selected coach. Filtering server-side avoids hitting the Supabase
+    // default 1000-row limit that silently truncates unfiltered queries.
+    const coachList = selectedCoachIds.join(',')
+    let primaryQuery = supabase
+      .from('member_memberships')
+      .select(selectCols)
+      .is('primary_membership_id', null)
+      .or(`coach_id.in.(${coachList}),handoff_coach_id.in.(${coachList})`)
 
     if (gymFilter) {
-      query = query.eq('gym', gymFilter)
+      primaryQuery = primaryQuery.eq('gym', gymFilter)
     }
 
-    const { data, error } = await query
+    const { data: primaryData, error: primaryError } = await primaryQuery
 
-    if (error) {
-      console.error('Error fetching memberships:', error)
+    if (primaryError) {
+      console.error('Error fetching primary memberships:', primaryError)
       setLoading(false)
       return
     }
 
-    const rows = (data ?? []) as unknown as Membership[]
+    const primaryRows = (primaryData ?? []) as unknown as Membership[]
 
-    // Step 1: group ALL memberships by member_id
-    const allMemberships = new Map<string, Membership[]>()
-    for (const row of rows) {
+    // Step 2: Keep only members whose effective coach is selected and not no_sale
+    const primaryByMember = new Map<string, Membership>()
+    for (const row of primaryRows) {
       if (!row.member_id) continue
-      const existing = allMemberships.get(row.member_id) ?? []
-      existing.push(row)
-      allMemberships.set(row.member_id, existing)
-    }
-
-    // Step 2: include only members whose PRIMARY membership's effective coach
-    // matches a selected coach. Secondary memberships may have different coach_ids
-    // and do NOT affect who "owns" the member.
-    //   effective coach = handoff_coach_id if set, otherwise coach_id
-    const memberMap = new Map<string, Membership[]>()
-    for (const [memberId, memberships] of allMemberships) {
-      const primary = memberships.find((m) => m.primary_membership_id === null)
-      if (!primary) continue
-      if (primary.journey_stage === 'no_sale') continue
-
-      const effectiveCoach = primary.handoff_coach_id ?? primary.coach_id
+      if (row.journey_stage === 'no_sale') continue
+      const effectiveCoach = row.handoff_coach_id ?? row.coach_id
       if (!effectiveCoach || !selectedCoachIds.includes(effectiveCoach)) continue
-
-      memberMap.set(memberId, memberships)
+      primaryByMember.set(row.member_id, row)
     }
 
-    // Fetch member names
-    const memberIds = Array.from(memberMap.keys())
-    if (memberIds.length === 0) {
+    const qualifiedMemberIds = Array.from(primaryByMember.keys())
+    if (qualifiedMemberIds.length === 0) {
       setMembers([])
       setLoading(false)
       return
     }
 
-    const { data: memberData } = await supabase
-      .from('member_database')
-      .select('id, member_name, first_name')
-      .in('id', memberIds)
+    // Step 3: Fetch secondary memberships + member names in parallel
+    const [secondaryResult, nameResult] = await Promise.all([
+      supabase
+        .from('member_memberships')
+        .select(selectCols)
+        .in('member_id', qualifiedMemberIds)
+        .not('primary_membership_id', 'is', null),
+      supabase
+        .from('member_database')
+        .select('id, member_name, first_name')
+        .in('id', qualifiedMemberIds),
+    ])
+
+    if (secondaryResult.error) {
+      console.error('Error fetching secondary memberships:', secondaryResult.error)
+    }
+
+    const secondaryByMember = new Map<string, Membership[]>()
+    for (const row of (secondaryResult.data ?? []) as unknown as Membership[]) {
+      if (!row.member_id) continue
+      const existing = secondaryByMember.get(row.member_id) ?? []
+      existing.push(row)
+      secondaryByMember.set(row.member_id, existing)
+    }
 
     const nameMap = new Map<
       string,
       { memberName: string; firstName: string | null }
     >()
-    for (const m of memberData ?? []) {
+    for (const m of nameResult.data ?? []) {
       nameMap.set(m.id, {
         memberName: m.member_name ?? 'Unknown',
         firstName: m.first_name,
@@ -130,14 +141,11 @@ export function useMembers(
 
     const result: MemberWithMemberships[] = []
 
-    for (const [memberId, memberships] of memberMap) {
-      const primary = memberships.find((m) => m.primary_membership_id === null) ?? null
-      const secondaries = memberships.filter((m) => m.primary_membership_id !== null)
+    for (const [memberId, primary] of primaryByMember) {
+      const secondaries = secondaryByMember.get(memberId) ?? []
+      const allMemberships = [primary, ...secondaries]
 
-      // Only include if they have a primary membership
-      if (!primary) continue
-
-      const contractedSessions = memberships.reduce((sum, m) => {
+      const contractedSessions = allMemberships.reduce((sum, m) => {
         const freq = m.membership_types?.session_frequency_per_week ?? 0
         return sum + freq
       }, 0)
@@ -145,6 +153,7 @@ export function useMembers(
       const info = nameMap.get(memberId)
       const memberName = info?.memberName ?? 'Unknown'
       const isExpired = primary.end_date ? primary.end_date < today : false
+
       result.push({
         memberId,
         memberName,
