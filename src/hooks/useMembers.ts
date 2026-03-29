@@ -86,13 +86,17 @@ export function useMembers(
 
     const primaryRows = (primaryData ?? []) as unknown as Membership[]
 
-    // Step 2: Keep only members whose effective coach is selected and not no_sale
+    // Step 2: Keep only members whose effective coach is selected and not no_sale.
+    // A member can have multiple historical "primary" rows (one per renewal cycle).
+    // Always keep the row with the latest end_date so we use the current membership.
     const primaryByMember = new Map<string, Membership>()
     for (const row of primaryRows) {
       if (!row.member_id) continue
       if (row.journey_stage === 'no_sale') continue
       const effectiveCoach = row.handoff_coach_id ?? row.coach_id
       if (!effectiveCoach || !selectedCoachIds.includes(effectiveCoach)) continue
+      const existing = primaryByMember.get(row.member_id)
+      if (existing && (existing.end_date ?? '') >= (row.end_date ?? '')) continue
       primaryByMember.set(row.member_id, row)
     }
 
