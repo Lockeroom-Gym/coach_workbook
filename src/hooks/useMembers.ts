@@ -152,7 +152,7 @@ export function useMembers(
 
       const info = nameMap.get(memberId)
       const memberName = info?.memberName ?? 'Unknown'
-      const isExpired = primary.end_date ? primary.end_date < today : false
+      const isExpired = primary.end_date ? primary.end_date <= today : false
 
       result.push({
         memberId,
