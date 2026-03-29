@@ -24,6 +24,7 @@ interface Props {
   onCreateAndCheckin: (memberId: string, coachId: string) => void
   effectiveCoachId: string
   expandAllNotes: boolean
+  isExpired: boolean
 }
 
 function formatDate(dateStr: string | null): string {
@@ -75,6 +76,7 @@ export function MemberRow({
   onCreateAndCheckin,
   effectiveCoachId,
   expandAllNotes,
+  isExpired,
 }: Props) {
   const weekPctStr = lastWeekPct(
     member.contractedSessions,
@@ -101,11 +103,20 @@ export function MemberRow({
     }
   }
 
+  const dimmed = isExpired ? 'opacity-40' : ''
+  const rowBg = isExpired ? 'bg-gray-50' : ''
+  const stickyBg = isExpired ? 'bg-gray-50' : 'bg-white'
+
   return (
-    <tr className="border-b border-gray-100 hover:bg-gray-50/50 transition-colors">
+    <tr className={`border-b border-gray-100 transition-colors ${rowBg} ${dimmed} ${isExpired ? '' : 'hover:bg-gray-50/50'}`}>
       {/* Member Name */}
-      <td className="px-4 py-3 text-sm font-medium text-gray-900 whitespace-nowrap sticky left-0 bg-white z-10">
+      <td className={`px-4 py-3 text-sm font-medium text-gray-900 whitespace-nowrap sticky left-0 z-10 ${stickyBg}`}>
         {member.memberName}
+        {isExpired && (
+          <span className="ml-2 text-[10px] font-normal tracking-wide uppercase text-gray-400 border border-gray-300 rounded px-1 py-0.5">
+            expired
+          </span>
+        )}
       </td>
 
       {/* Sessions/wk (contracted) */}

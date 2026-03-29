@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import type { CollapseState } from './types'
 import { useCoaches } from './hooks/useCoaches'
 import { useMembers } from './hooks/useMembers'
@@ -18,11 +18,9 @@ function App() {
   })
   const [expandAllNotes, setExpandAllNotes] = useState(false)
 
-  const { members, loading: membersLoading } = useMembers(
-    selectedCoachIds,
-    activeOnly,
-    gymFilter
-  )
+  const { members, loading: membersLoading } = useMembers(selectedCoachIds, gymFilter)
+
+  const activeCount = useMemo(() => members.filter((m) => !m.isExpired).length, [members])
 
   function toggleCollapse(key: keyof CollapseState) {
     setCollapse((prev) => ({ ...prev, [key]: !prev[key] }))
@@ -43,30 +41,39 @@ function App() {
               </p>
             </div>
 
-            <div className="flex items-center gap-4 flex-wrap">
-              {/* Coach Selector */}
-              <CoachSelector
-                coaches={coaches}
-                selectedIds={selectedCoachIds}
-                onChange={setSelectedCoachIds}
-              />
+            <div className="flex flex-col items-end gap-1.5">
+              <div className="flex items-center gap-4 flex-wrap justify-end">
+                {/* Coach Selector */}
+                <CoachSelector
+                  coaches={coaches}
+                  selectedIds={selectedCoachIds}
+                  onChange={setSelectedCoachIds}
+                />
 
-              {/* Active Only Toggle */}
-              <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer select-none">
-                <div
-                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                    activeOnly ? 'bg-blue-600' : 'bg-gray-300'
-                  }`}
-                  onClick={() => setActiveOnly(!activeOnly)}
-                >
-                  <span
-                    className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${
-                      activeOnly ? 'translate-x-6' : 'translate-x-1'
+                {/* Active Only Toggle */}
+                <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer select-none">
+                  <div
+                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                      activeOnly ? 'bg-blue-600' : 'bg-gray-300'
                     }`}
-                  />
+                    onClick={() => setActiveOnly(!activeOnly)}
+                  >
+                    <span
+                      className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${
+                        activeOnly ? 'translate-x-6' : 'translate-x-1'
+                      }`}
+                    />
+                  </div>
+                  Active only
+                </label>
+              </div>
+
+              {/* Client count summary — shown under the coach selector */}
+              {selectedCoachIds.length > 0 && !membersLoading && (
+                <div className="text-xs text-gray-500 text-right">
+                  <span className="font-medium text-gray-700">{activeCount}</span> active clients
                 </div>
-                Active only
-              </label>
+              )}
             </div>
           </div>
 
@@ -94,6 +101,7 @@ function App() {
           <MemberTable
             members={members}
             selectedCoachIds={selectedCoachIds}
+            activeOnly={activeOnly}
             collapse={collapse}
             onToggleCollapse={toggleCollapse}
             expandAllNotes={expandAllNotes}

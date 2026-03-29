@@ -23,11 +23,12 @@ export interface MemberWithMemberships {
   contractedSessions: number
   membershipExpiry: string | null
   gym: string | null
+  /** True when the primary membership end_date is in the past. */
+  isExpired: boolean
 }
 
 export function useMembers(
   selectedCoachIds: string[],
-  activeOnly: boolean,
   gymFilter: string | null
 ) {
   const [members, setMembers] = useState<MemberWithMemberships[]>([])
@@ -64,10 +65,6 @@ export function useMembers(
         )
       `)
       .neq('journey_stage', 'no_sale')
-
-    if (activeOnly) {
-      query = query.gte('end_date', today)
-    }
 
     if (gymFilter) {
       query = query.eq('gym', gymFilter)
@@ -136,6 +133,7 @@ export function useMembers(
 
       const info = nameMap.get(memberId)
       const memberName = info?.memberName ?? 'Unknown'
+      const isExpired = primary.end_date ? primary.end_date < today : false
       result.push({
         memberId,
         memberName,
@@ -145,12 +143,13 @@ export function useMembers(
         contractedSessions,
         membershipExpiry: primary.end_date,
         gym: primary.gym,
+        isExpired,
       })
     }
 
     setMembers(result)
     setLoading(false)
-  }, [selectedCoachIds, activeOnly, gymFilter])
+  }, [selectedCoachIds, gymFilter])
 
   useEffect(() => {
     fetchMembers()

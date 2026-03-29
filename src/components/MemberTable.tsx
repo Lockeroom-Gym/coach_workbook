@@ -15,6 +15,7 @@ import { useSessions } from '../hooks/useSessions'
 interface Props {
   members: MemberWithMemberships[]
   selectedCoachIds: string[]
+  activeOnly: boolean
   collapse: CollapseState
   onToggleCollapse: (key: keyof CollapseState) => void
   expandAllNotes: boolean
@@ -25,6 +26,7 @@ interface Props {
 export function MemberTable({
   members,
   selectedCoachIds,
+  activeOnly,
   collapse,
   onToggleCollapse,
   expandAllNotes,
@@ -48,18 +50,18 @@ export function MemberTable({
   const [sortColumn, setSortColumn] = useState<SortColumn | null>('name')
   const [sortDir, setSortDir] = useState<SortDirection>('asc')
 
-  const sortedMembers = useMemo(
-    () =>
-      sortMembersList(
-        members,
-        sortColumn,
-        sortDir,
-        statsMap,
-        notesMap,
-        monthFullWeeks
-      ),
-    [members, sortColumn, sortDir, statsMap, notesMap, monthFullWeeks]
-  )
+  const sortedMembers = useMemo(() => {
+    const sorted = sortMembersList(
+      members,
+      sortColumn,
+      sortDir,
+      statsMap,
+      notesMap,
+      monthFullWeeks
+    )
+    // When "active only" is on, hide expired rows entirely
+    return activeOnly ? sorted.filter((m) => !m.isExpired) : sorted
+  }, [members, sortColumn, sortDir, statsMap, notesMap, monthFullWeeks, activeOnly])
 
   function handleSort(column: SortColumn) {
     if (sortColumn === column) {
@@ -271,6 +273,7 @@ export function MemberTable({
                   onCreateAndCheckin={createAndCheckin}
                   effectiveCoachId={effectiveCoachId}
                   expandAllNotes={expandAllNotes}
+                  isExpired={m.isExpired}
                 />
               )
             })}
@@ -279,7 +282,12 @@ export function MemberTable({
       </div>
 
       <div className="mt-3 text-xs text-gray-400 text-right">
-        {members.length} member{members.length !== 1 ? 's' : ''}
+        {sortedMembers.length} member{sortedMembers.length !== 1 ? 's' : ''}
+        {!activeOnly && members.filter((m) => m.isExpired).length > 0 && (
+          <span className="ml-2 text-gray-300">
+            (including {members.filter((m) => m.isExpired).length} inactive)
+          </span>
+        )}
       </div>
     </div>
   )
